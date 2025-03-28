@@ -23,20 +23,28 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(quantmod)
 
+# Define event and end dates
+event_date <- as.Date("2020-03-16")
+end_date <- as.Date("2022-03-15")
+
+# Download full S&P 500 data
 data <- getSymbols('^GSPC', src='yahoo', auto.assign=FALSE)
 
-# Get returns
+# Filter data to desired date range
+data <- data[paste0(event_date, "/", end_date)]
+
+# Get log returns
 returns <- diff(log(Cl(data)))
-returns <- returns[-1]
+returns <- returns[-1]  # Remove NA created by diff
 returns <- as.vector(returns)
 
-# Store snp data
+# Store S&P 500 data for plotting
 snp_data <- as.data.frame(data)
-time <- row.names(snp_data)
+time <- row.names(snp_data)[-1]  # drop the first row to match returns length
 
 rm(data)
 
-plot.ts(returns, main = "S&P 500 Returns")
+plot.ts(returns, main = "S&P 500 Returns (Post-Event)", ylab = "Log Returns", col = "firebrick", lwd = 2)
 ```
 
 ```{r}
@@ -542,289 +550,5 @@ mtext("Lag Plots", side = 3, outer = TRUE, padj = 3)
 par(mfrow = c(1, 1))
 
 ```
-
-
-
-
-
-## Synthetic Control
-
-```{r}
-
-library(quantmod)
-library(Synth)
-library(dplyr)
-library(reshape2)
-library(xts)
-
-# Get S&P 500 data
-snp_data <- getSymbols('^GSPC', src='yahoo', auto.assign=FALSE)
-
-# Compute log returns
-snp_returns <- diff(log(Cl(snp_data)))
-snp_returns <- snp_returns[-1]  # Remove NA
-dates <- index(snp_returns)  # Store dates
-snp_returns <- as.vector(snp_returns)
-
-# Define event date
-event_date <- as.Date("2020-03-15")
-
-# Load additional indices for synthetic control
-indices <- c("^DJI", "^IXIC", "^RUT", "^FTSE", "^N225")
-
-# Get market data for control group
-market_data <- lapply(indices, function(x) getSymbols(x, src="yahoo", auto.assign=FALSE))
-market_returns <- lapply(market_data, function(x) diff(log(Cl(x)))[-1])
-
-# Convert to a merged dataframe
-market_returns_df <- do.call(merge, market_returns)
-colnames(market_returns_df) <- indices
-
-# Align dates with S&P 500 and remove rows with missing values
-market_returns_df <- market_returns_df[index(market_returns_df) %in% dates, ]
-market_returns_df <- na.omit(market_returns_df)  # Drop rows with any NA
-
-# Update dates after removing NA rows
-dates_filtered <- index(market_returns_df)
-snp_filtered <- snp_returns[dates %in% dates_filtered]
-dates_filtered <- as.Date(dates_filtered)  # Ensure it's Date class
-
-# Convert market returns to dataframe
-market_returns_df$Date <- as.numeric(index(market_returns_df))  # Convert dates to numeric
-
-# Convert S&P 500 returns to dataframe and align dates
-snp_df <- data.frame(Date = as.numeric(dates_filtered), SP500 = snp_filtered)
-
-# Merge the S&P 500 data with market data
-full_data <- merge(snp_df, market_returns_df, by = "Date", all.x = TRUE)
-
-# Reshape into long format
-long_data <- melt(full_data, id.vars = "Date", variable.name = "Unit", value.name = "Returns")
-
-# Remove missing values
-long_data <- long_data[complete.cases(long_data), ]
-
-# Filter to keep only complete units (i.e., units observed across all time points)
-obs_count <- long_data %>%
-  group_by(Unit) %>%
-  summarise(n_obs = n())
-
-n_dates <- length(unique(long_data$Date))
-complete_units <- obs_count$Unit[obs_count$n_obs == n_dates]
-long_data <- long_data[long_data$Unit %in% complete_units, ]
-
-# Reassign numeric identifiers to units
-long_data$Unit_ID <- as.numeric(factor(long_data$Unit))
-
-# Define pre-event period
-pre_event_data <- long_data[long_data$Date < as.numeric(event_date), ]
-
-# Ensure proper sorting and character unit names
-pre_event_data <- pre_event_data[order(pre_event_data$Date, pre_event_data$Unit_ID), ]
-pre_event_data$Unit <- as.character(pre_event_data$Unit)
-
-# Prepare data for Synth
-dataprep_obj <- dataprep(
-  foo = pre_event_data,
-  predictors = "Returns",  # Predictors: market index returns
-  dependent = "Returns",   # Dependent variable: S&P 500 returns
-  unit.variable = "Unit_ID",  # Numeric unit identifier
-  time.variable = "Date",  # Numeric time variable
-  treatment.identifier = unique(long_data$Unit_ID[long_data$Unit == "SP500"]),  # S&P 500 is treated unit
-  controls.identifier = unique(long_data$Unit_ID[long_data$Unit != "SP500"]),  # Other indices as control
-  time.predictors.prior = sort(unique(pre_event_data$Date)),  # Pre-treatment period
-  time.optimize.ssr = sort(unique(pre_event_data$Date)),  # Optimize over pre-treatment period
-  unit.names.variable = "Unit"
-)
-
-# Run synthetic control model
-synth_res <- synth(dataprep_obj)
-
-# Extract synthetic control estimated returns
-synthetic_returns <- dataprep_obj$Y0 %*% synth_res$solution.w
-
-# Convert synthetic returns to time series
-synthetic_ts <- xts(synthetic_returns, order.by = dates_filtered[dates_filtered < event_date])
-
-# Plot actual vs synthetic returns
-plot(dates_filtered[dates_filtered < event_date], snp_filtered[dates_filtered < event_date], type = "l", 
-     col = "red", lwd = 2, main = "Actual vs. Synthetic S&P 500 Returns", 
-     ylab = "Returns", xlab = "Time")
-lines(index(synthetic_ts), synthetic_ts, col = "blue", lwd = 2)
-legend("topright", legend = c("Actual S&P 500", "Synthetic Control"), 
-       col = c("red", "blue"), lwd = 2)
-
-# Store synthetic control values for further analysis
-synthetic_df <- data.frame(Date = dates_filtered[dates_filtered < event_date], 
-                           Actual = snp_filtered[dates_filtered < event_date], 
-                           Synthetic = synthetic_returns)
-
-
-
-```
-
-
-## update weights to post
-
-```{r}
-library(quantmod)
-library(Synth)
-library(dplyr)
-library(reshape2)
-library(xts)
-
-# Set date range and event
-start_date <- as.Date("2018-01-01")
-end_date <- as.Date("2022-03-15")
-event_date <- as.Date("2020-03-16")  # First trading day after COVID-19 crash trigger
-
-# Get S&P 500 data
-snp_data <- getSymbols('^GSPC', src='yahoo', auto.assign=FALSE)
-snp_data <- snp_data[paste0(start_date, "/", end_date)]
-snp_returns <- diff(log(Cl(snp_data)))
-snp_returns <- snp_returns[-1]
-dates <- index(snp_returns)
-snp_returns <- as.vector(snp_returns)
-
-# Load additional indices
-indices <- c("^DJI", "^IXIC", "^RUT")
-market_data <- lapply(indices, function(x) {
-  data <- getSymbols(x, src = "yahoo", auto.assign = FALSE)
-  return(data[paste0(start_date, "/", end_date)])
-})
-
-market_returns <- lapply(market_data, function(x) diff(log(Cl(x)))[-1])
-market_returns_df <- do.call(merge, market_returns)
-colnames(market_returns_df) <- indices
-market_returns_df <- market_returns_df[index(market_returns_df) %in% dates, ]
-market_returns_df <- na.omit(market_returns_df)
-
-dates_filtered <- index(market_returns_df)
-snp_filtered <- snp_returns[dates %in% dates_filtered]
-dates_filtered <- as.Date(dates_filtered)
-
-# Convert to dataframes
-market_returns_df$Date <- as.numeric(index(market_returns_df))
-snp_df <- data.frame(Date = as.numeric(dates_filtered), SP500 = snp_filtered)
-full_data <- merge(snp_df, market_returns_df, by = "Date", all.x = TRUE)
-
-# Reshape to long format
-long_data <- melt(full_data, id.vars = "Date", variable.name = "Unit", value.name = "Returns")
-long_data <- long_data[complete.cases(long_data), ]
-
-# Balance panel
-obs_count <- long_data %>% group_by(Unit) %>% summarise(n_obs = n())
-n_dates <- length(unique(long_data$Date))
-complete_units <- obs_count$Unit[obs_count$n_obs == n_dates]
-long_data <- long_data[long_data$Unit %in% complete_units, ]
-
-# Assign numeric unit IDs
-long_data$Unit_ID <- as.numeric(factor(long_data$Unit))
-
-# Pre-event data
-pre_event_data <- long_data[long_data$Date < as.numeric(event_date), ]
-pre_event_data <- pre_event_data[order(pre_event_data$Date, pre_event_data$Unit_ID), ]
-pre_event_data$Unit <- as.character(pre_event_data$Unit)
-
-# Prepare Synth object
-dataprep_obj <- dataprep(
-  foo = pre_event_data,
-  predictors = "Returns",
-  dependent = "Returns",
-  unit.variable = "Unit_ID",
-  time.variable = "Date",
-  treatment.identifier = unique(long_data$Unit_ID[long_data$Unit == "SP500"]),
-  controls.identifier = unique(long_data$Unit_ID[long_data$Unit != "SP500"]),
-  time.predictors.prior = sort(unique(pre_event_data$Date)),
-  time.optimize.ssr = sort(unique(pre_event_data$Date)),
-  unit.names.variable = "Unit"
-)
-
-# Fit synthetic control model
-synth_res <- synth(dataprep_obj)
-
-# Pre-event actual and synthetic time series
-actual_ts <- xts(snp_filtered, order.by = dates_filtered)
-synthetic_pre <- dataprep_obj$Y0 %*% synth_res$solution.w
-synthetic_ts_pre <- xts(synthetic_pre, order.by = dates_filtered[dates_filtered < event_date])
-
-# Extract pre/post actuals
-actual_pre <- actual_ts[dates_filtered < event_date]
-actual_post <- actual_ts[dates_filtered >= event_date]
-
-# Post-event: manually compute synthetic returns
-weights <- synth_res$solution.w
-post_event_data <- long_data[long_data$Date >= as.numeric(event_date), ]
-post_event_data$Unit <- as.character(post_event_data$Unit)
-
-# Match control names to weight order
-unit_table <- unique(long_data[, c("Unit_ID", "Unit")])
-control_names <- unit_table$Unit[unit_table$Unit_ID %in% as.numeric(rownames(weights))]
-
-# Pivot control units to wide format for post-treatment
-control_post_wide <- reshape2::dcast(post_event_data, Date ~ Unit, value.var = "Returns")
-control_returns <- control_post_wide[, control_names]
-
-# Multiply control returns by weights
-synthetic_post <- as.matrix(control_returns) %*% weights
-synthetic_ts_post <- xts(synthetic_post, order.by = as.Date(as.numeric(control_post_wide$Date), origin = "1970-01-01"))
-
-# Plot all
-plot(index(actual_pre), actual_pre, type = "l", col = "red", lwd = 2,
-     ylim = range(c(actual_ts, synthetic_ts_pre, synthetic_ts_post)),
-     main = "Actual vs. Synthetic S&P 500 Returns",
-     ylab = "Returns", xlab = "Date")
-
-lines(index(synthetic_ts_pre), synthetic_ts_pre, col = "blue", lwd = 2)
-lines(index(actual_post), actual_post, col = "red", lwd = 2, lty = 2)
-lines(index(synthetic_ts_post), synthetic_ts_post, col = "blue", lwd = 2, lty = 2)
-abline(v = event_date, col = "gray", lty = 2)
-
-#legend("topright", legend = c("Actual S&P 500 (Pre)", "Synthetic Control (Pre)",
- #                             "Actual S&P 500 (Post)", "Synthetic Control (Post)"),
-       #col = c("red", "blue", "red", "blue"), lwd = 2, lty = c(1, 1, 2, 2))
-
-# Save synthetic control results
-synthetic_df_pre <- data.frame(
-  Date = dates_filtered[dates_filtered < event_date],
-  Actual = as.numeric(actual_pre),
-  Synthetic = as.numeric(synthetic_ts_pre)
-)
-
-synthetic_df_post <- data.frame(
-  Date = index(synthetic_ts_post),
-  Actual = as.numeric(actual_post),
-  Synthetic = as.numeric(synthetic_ts_post)
-)
-
-```
-
-```{r}
-# plot all values after 2020
-
-plot(index(actual_post), actual_post, type = "l", col = "red", lwd = 2,
-     ylim = range(c(actual_ts, synthetic_ts_pre, synthetic_ts_post)),
-     main = "Actual vs. Synthetic S&P 500 Returns",
-     ylab = "Returns", xlab = "Date")
-
-lines(index(synthetic_ts_post), synthetic_ts_post, col = "blue", lwd = 1)
-
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ## Returns SCM: 
-```{r}
+
 # Date range for analysis
 start_date <- as.Date("2018-01-01")
 end_date <- as.Date("2022-03-15")
@@ -32,8 +32,17 @@ time <- row.names(snp_data)[-1]  # remove first because of diff()
 
 plot.ts(returns, main = "S&P 500 Returns (2018–2022)")
 
-```
 
+
+
+```{r}
+# Use only the *synthetic post-event* returns
+returns <- as.vector(synthetic_ts_post)
+
+# Corresponding dates for labeling / plotting
+time <- as.character(index(synthetic_ts_post))
+
+```
 
 ## Sampler init:
 
@@ -41,6 +50,7 @@ plot.ts(returns, main = "S&P 500 Returns (2018–2022)")
 
 T <- length(returns)
 initial <- list(h = rep(0, T), sigma2 = 0.02, phi = 0.95, mu = 0)
+
 
 ```
 
@@ -396,7 +406,7 @@ axis(1, at = label_indices, labels = label_dates, las = 1, cex.axis = 0.7)
 ```{r}
 # Dataframe for ht (used in LSTM RMD)
 mean.h_df <- data.frame(x_vals, mean.h)
-#write.csv(mean.h_df, "mean-ht-logscale.csv")
+write.csv(mean.h_df, "mean-ht-logscale.csv")
 ```
 
 ## Further Diagnostics: Rhat & SBC
