@@ -135,7 +135,7 @@ library(xts)
 # Set date range and event
 start_date <- as.Date("2018-01-01")
 end_date <- as.Date("2022-03-15")
-event_date <- as.Date("2020-03-16")  # First trading day after COVID-19 crash trigger
+event_date <- as.Date("2020-02-13")  # First trading day after COVID-19 crash trigger
 
 # Get S&P 500 data
 snp_data <- getSymbols('^GSPC', src='yahoo', auto.assign=FALSE)
@@ -242,7 +242,7 @@ abline(v = event_date, col = "gray", lty = 2)
 
 legend("topleft", legend = c("Actual S&P 500 (Pre)", "Synthetic Control (Pre)",
                               "Actual S&P 500 (Post)", "Synthetic Control (Post)"),
-        col = c("red", "blue", "red", "blue"), lwd = 2, lty = c(1, 1, 2, 2))
+        col = c("blue", "red", "blue", "red"), lwd = 2, lty = c(1, 1, 2, 2))
 
 # Save synthetic control results
 synthetic_df_pre <- data.frame(
@@ -272,8 +272,200 @@ plot(index(actual_post), actual_post, type = "l", col = "red", lwd = 2,
      ylab = "Returns", xlab = "Date")
 
 lines(index(synthetic_ts_post), synthetic_ts_post, col = "blue", lwd = 1)
+legend("topright", legend = c("Actual S&P 500 (Post)", "Synthetic Control (Post)"),
+       col = c("blue", "red"), lwd = 2, lty = c(1, 1))
 
 ```
+
+
+
+## Commodities Approach
+
+```{r warning=FALSE}
+
+library(quantmod)
+library(Synth)
+library(dplyr)
+library(reshape2)
+library(xts)
+
+# Set date range and event
+start_date <- as.Date("2018-01-01")
+end_date <- as.Date("2022-03-15")
+event_date <- as.Date("2020-02-13")  # First trading day after COVID-19 crash trigger
+
+# Get S&P 500 data
+snp_data <- getSymbols('^GSPC', src='yahoo', auto.assign=FALSE)
+snp_data <- snp_data[paste0(start_date, "/", end_date)]
+snp_returns <- diff(log(Cl(snp_data)))
+snp_returns <- snp_returns[-1]
+dates <- index(snp_returns)
+snp_returns <- as.vector(snp_returns)
+
+# Commodity symbols from Yahoo Finance
+commodities <- c("CL=F", "GC=F", "SI=F", "HG=F", "BZ=F", "NG=F", "ZC=F", "ZS=F",
+                 "^DJI", "^IXIC", "^RUT", "^FTSE", "^N225", "^HSI")
+
+# Download and process commodity data
+commodity_data <- lapply(commodities, function(x) {
+  data <- getSymbols(x, src = "yahoo", auto.assign = FALSE)
+  data <- na.approx(data)
+  return(data[paste0(start_date, "/", end_date)])
+})
+
+# Compute log returns
+commodity_returns <- lapply(commodity_data, function(x) diff(log(Cl(x)))[-1])
+commodity_returns_df <- do.call(merge, commodity_returns)
+colnames(commodity_returns_df) <- commodities
+commodity_returns_df <- commodity_returns_df[index(commodity_returns_df) %in% dates, ]
+commodity_returns_df <- na.approx(commodity_returns_df)
+
+# Match dates and format
+dates_filtered <- index(commodity_returns_df)
+snp_filtered <- snp_returns[dates %in% dates_filtered]
+dates_filtered <- as.Date(dates_filtered)
+
+# Convert to dataframes
+commodity_returns_df$Date <- as.numeric(index(commodity_returns_df))
+snp_df <- data.frame(Date = as.numeric(dates_filtered), SP500 = snp_filtered)
+full_data <- merge(snp_df, commodity_returns_df, by = "Date", all.x = TRUE)
+
+# Reshape to long format
+long_data <- melt(full_data, id.vars = "Date", variable.name = "Unit", value.name = "Returns")
+long_data <- long_data[complete.cases(long_data), ]
+
+# Balance panel
+obs_count <- long_data %>% group_by(Unit) %>% summarise(n_obs = n())
+n_dates <- length(unique(long_data$Date))
+complete_units <- obs_count$Unit[obs_count$n_obs == n_dates]
+long_data <- long_data[long_data$Unit %in% complete_units, ]
+
+# Assign numeric unit IDs
+long_data$Unit_ID <- as.numeric(factor(long_data$Unit))
+
+# Pre-event data
+pre_event_data <- long_data[long_data$Date < as.numeric(event_date), ]
+pre_event_data <- pre_event_data[order(pre_event_data$Date, pre_event_data$Unit_ID), ]
+pre_event_data$Unit <- as.character(pre_event_data$Unit)
+
+# Prepare Synth object
+dataprep_obj <- dataprep(
+  foo = pre_event_data,
+  predictors = "Returns",
+  dependent = "Returns",
+  unit.variable = "Unit_ID",
+  time.variable = "Date",
+  treatment.identifier = unique(long_data$Unit_ID[long_data$Unit == "SP500"]),
+  controls.identifier = unique(long_data$Unit_ID[long_data$Unit != "SP500"]),
+  time.predictors.prior = sort(unique(pre_event_data$Date)),
+  time.optimize.ssr = sort(unique(pre_event_data$Date)),
+  unit.names.variable = "Unit"
+)
+
+# Fit synthetic control model
+synth_res <- synth(dataprep_obj)
+
+# Pre-event actual and synthetic time series
+actual_ts <- xts(snp_filtered, order.by = dates_filtered)
+synthetic_pre <- dataprep_obj$Y0 %*% synth_res$solution.w
+synthetic_ts_pre <- xts(synthetic_pre, order.by = dates_filtered[dates_filtered < event_date])
+
+# Extract pre/post actuals
+actual_pre <- actual_ts[dates_filtered < event_date]
+actual_post <- actual_ts[dates_filtered >= event_date]
+
+# Post-event synthetic control returns
+weights <- synth_res$solution.w
+post_event_data <- long_data[long_data$Date >= as.numeric(event_date), ]
+post_event_data$Unit <- as.character(post_event_data$Unit)
+
+# Match control names to weight order
+unit_table <- unique(long_data[, c("Unit_ID", "Unit")])
+control_names <- unit_table$Unit[unit_table$Unit_ID %in% as.numeric(rownames(weights))]
+
+# Pivot control units to wide format for post-treatment
+control_post_wide <- reshape2::dcast(post_event_data, Date ~ Unit, value.var = "Returns")
+control_returns <- control_post_wide[, control_names]
+
+# Multiply control returns by weights
+synthetic_post <- as.matrix(control_returns) %*% weights
+synthetic_ts_post <- xts(synthetic_post, order.by = as.Date(as.numeric(control_post_wide$Date), origin = "1970-01-01"))
+
+# Plot all
+plot(index(actual_pre), actual_pre, type = "l", col = "red", lwd = 2,
+     ylim = range(c(actual_ts, synthetic_ts_pre, synthetic_ts_post)),
+     main = "Actual vs. Synthetic S&P 500 Returns (Commodities as Donors)",
+     ylab = "Returns", xlab = "Date")
+
+lines(index(synthetic_ts_pre), synthetic_ts_pre, col = "blue", lwd = 2)
+lines(index(actual_post), actual_post, col = "red", lwd = 2, lty = 2)
+lines(index(synthetic_ts_post), synthetic_ts_post, col = "blue", lwd = 2, lty = 2)
+abline(v = event_date, col = "gray", lty = 2)
+
+legend("topleft", legend = c("Actual S&P 500 (Pre)", "Synthetic Control (Pre)",
+                              "Actual S&P 500 (Post)", "Synthetic Control (Post)"),
+       col = c("blue", "red", "blue", "red"), lwd = 2, lty = c(1, 1, 2, 2))
+
+# Save synthetic control results
+synthetic_df_pre <- data.frame(
+  Date = dates_filtered[dates_filtered < event_date],
+  Actual = as.numeric(actual_pre),
+  Synthetic = as.numeric(synthetic_ts_pre)
+)
+
+synthetic_df_post <- data.frame(
+  Date = index(synthetic_ts_post),
+  Actual = as.numeric(actual_post),
+  Synthetic = as.numeric(synthetic_ts_post)
+)
+
+leadin <- as.Date("2019-09-16")
+
+# Extract actual and synthetic returns starting from lead-in
+actual_window <- actual_ts[index(actual_ts) >= leadin]
+synthetic_window <- xts(c(as.numeric(synthetic_ts_pre[index(synthetic_ts_pre) >= leadin]),
+                          as.numeric(synthetic_ts_post)),
+                        order.by = c(index(synthetic_ts_pre[index(synthetic_ts_pre) >= leadin]),
+                                     index(synthetic_ts_post)))
+
+plot(index(actual_post), actual_post, type = "l", col = "red", lwd = 2,
+     ylim = range(c(actual_ts, synthetic_ts_pre, synthetic_ts_post)),
+     main = "Post-COVID Actual vs. Synthetic S&P 500",
+     ylab = "Returns", xlab = "Date")
+lines(index(synthetic_ts_post), synthetic_ts_post, col = "blue", lwd = 1)
+legend("topright", legend = c("Actual S&P 500 (Post)", "Synthetic Control (Post)"),
+       col = c("red", "blue"), lwd = 2, lty = c(1, 1))
+
+
+```
+
+
+
+```{r}
+
+# Combine pre- and post-event synthetic control results
+synthetic_df_all <- rbind(synthetic_df_pre, synthetic_df_post)
+
+# Ensure proper date formatting
+synthetic_df_all$Date <- as.Date(synthetic_df_all$Date, origin = "1970-01-01")
+
+write.csv(synthetic_df_all, "synthetic_sp500_returns.csv", row.names = FALSE)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
