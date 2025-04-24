@@ -1,5 +1,5 @@
 ---
-title: "svm_gibbs_final"
+title: "svm_gibbs_final_CONTROL_SCM"
 output:
   word_document: default
   html_document: default
@@ -17,18 +17,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # Store length of returns vector and initial parameter values
 df <- read.csv("synthetic_sp500_returns.csv")
 date <- as.Date(df$Date)
-
-df <- read.csv("synthetic_sp500_returns.csv")
-df$Date <- as.Date(df$Date)
-
-# Filter for Feb 1 – Apr 30, 2020
-df_sub <- df[df$Date >= as.Date("2020-02-01") & df$Date <= as.Date("2020-04-30"), ]
-
-# Extract filtered date and returns
-date <- df_sub$Date
-returns <- df_sub$Synthetic
-
-#returns <- df$Actual
+returns <- df$Synthetic
 
 T <- length(returns)
 initial <- list(h = rep(0,T), sigma2 = 0.02, phi = 0.95, mu = 0)
@@ -354,7 +343,6 @@ rm_col <- 20 # set number of ht you want to remove from end b/c of high variance
 mean.h <- colMeans(gibbs_sample[, 1:(ncol(gibbs_sample) - (rm_col + 4))], na.rm = TRUE) 
 exp.mean.h <- exp(mean.h/2)
 
-# Assuming the row names in 'data' are dates you want to use as labels
 x_vals <- date[1:length(exp.mean.h)]
 
 # Creating a numeric sequence for plotting
@@ -385,7 +373,7 @@ axis(1, at = label_indices, labels = label_dates, las = 1, cex.axis = 0.7)
 ```{r}
 # Dataframe for ht (used in LSTM RMD)
 mean.h_df <- data.frame(x_vals, mean.h)
-write.csv(mean.h_df, "mean-ht-logscale_ac.csv")
+write.csv(mean.h_df, "mean-ht-logscale_syn.csv")
 ```
 
 ## Further Diagnostics: Rhat & SBC
