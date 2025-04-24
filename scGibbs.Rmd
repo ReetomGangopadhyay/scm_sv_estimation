@@ -25,6 +25,28 @@ initial <- list(h = rep(0,T), sigma2 = 0.02, phi = 0.95, mu = 0)
 plot.ts(returns)
 ```
 
+```{r}
+# Store length of returns vector and initial parameter values
+
+df <- read.csv("synthetic_sp500_returns.csv")
+df$Date <- as.Date(df$Date)
+
+# Filter for Feb 1 – Apr 30, 2020
+df_sub <- df[df$Date >= as.Date("2020-02-01") & df$Date <= as.Date("2020-05-30"), ]
+
+# Extract filtered date and returns
+date <- df_sub$Date
+returns <- df_sub$Synthetic
+
+#returns <- df$Actual
+
+T <- length(returns)
+initial <- list(h = rep(0,T), sigma2 = 0.02, phi = 0.95, mu = 0)
+
+plot.ts(returns)
+
+```
+
 # Preliminaries for Gibbs Sampling Algorithm 
 
 ## Defining the hyperparameters

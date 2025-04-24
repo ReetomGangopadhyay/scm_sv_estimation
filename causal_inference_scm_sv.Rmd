@@ -16,17 +16,14 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 # Store length of returns vector and initial parameter values
 df <- read.csv("synthetic_sp500_returns.csv")
-date <- as.Date(df$Date)
-
-df <- read.csv("synthetic_sp500_returns.csv")
 df$Date <- as.Date(df$Date)
 
 # Filter for Feb 1 – Apr 30, 2020
-df_sub <- df[df$Date >= as.Date("2020-02-01") & df$Date <= as.Date("2020-04-30"), ]
+df_sub <- df[df$Date >= as.Date("2020-02-01") & df$Date <= as.Date("2020-05-30"), ]
 
 # Extract filtered date and returns
 date <- df_sub$Date
-returns <- df_sub$Synthetic
+returns <- df_sub$Actual
 
 #returns <- df$Actual
 

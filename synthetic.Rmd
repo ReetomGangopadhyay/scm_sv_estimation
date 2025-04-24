@@ -404,7 +404,7 @@ abline(v = event_date, col = "gray", lty = 2)
 
 legend("topleft", legend = c("Actual S&P 500 (Pre)", "Synthetic Control (Pre)",
                               "Actual S&P 500 (Post)", "Synthetic Control (Post)"),
-       col = c("blue", "red", "blue", "red"), lwd = 2, lty = c(1, 1, 2, 2))
+       col = c("red", "blue", "red", "bluea"), lwd = 2, lty = c(1, 1, 2, 2))
 
 # Save synthetic control results
 synthetic_df_pre <- data.frame(
@@ -459,8 +459,20 @@ write.csv(synthetic_df_all, "synthetic_sp500_returns.csv", row.names = FALSE)
 
 
 
+## Plot of Differences and ATET
+```{r}
+
+att_post <- mean(as.numeric(actual_post) - as.numeric(synthetic_ts_post))
+print(paste("Average Treatment Effect (Post-COVID):", round(att_post, 6)))
+
+diff_post <- actual_post - synthetic_ts_post
+plot(index(diff_post), diff_post, type = "l", col = "purple", lwd = 2,
+     main = "Difference in Returns: Actual - Synthetic (Post-COVID)",
+     ylab = "Return Difference", xlab = "Date")
+abline(h = 0, col = "gray", lty = 2)
 
 
+```
 
 
 
