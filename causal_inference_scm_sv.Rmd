@@ -22,8 +22,11 @@ df$Date <- as.Date(df$Date)
 df_sub <- df[df$Date >= as.Date("2020-02-01") & df$Date <= as.Date("2020-05-30"), ]
 
 # Extract filtered date and returns
-date <- df_sub$Date
-returns <- df_sub$Actual
+#date <- df_sub$Date
+#returns <- df_sub$Actual
+
+date <- df$Date
+returns <- df$Actual
 
 #returns <- df$Actual
 
@@ -380,7 +383,7 @@ axis(1, at = label_indices, labels = label_dates, las = 1, cex.axis = 0.7)
 ```
 
 ```{r}
-# Dataframe for ht (used in LSTM RMD)
+# Dataframe for ht
 mean.h_df <- data.frame(x_vals, mean.h)
 write.csv(mean.h_df, "mean-ht-logscale_ac.csv")
 ```

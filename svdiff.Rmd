@@ -30,8 +30,19 @@ abline(0, 1, col = "red", lty = 2, lwd = 2)  # y = x line
 
 ```
 
+```{r}
 
+# Calculate the difference between actual and synthetic
 
+diff <- actual - synthetic
+
+hist(diff, 
+     main = "Histogram of Differences", 
+     xlab = "Difference (Actual - Synthetic)", 
+     col = "lightblue", 
+     border = "black")
+
+```
 
 
 
