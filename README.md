@@ -86,10 +86,10 @@ To run the code, you'll need:
   - `reshape2`
   - `gridExtra`
  
-
-Got questions? Reach out to rgangopa@bu.edu
-
 You can install all necessary packages with:
 
 ```r
 install.packages(c("Synth", "quantmod", "xts", "coda", "dplyr", "ggplot2", "reshape2", "gridExtra"))
+```
+
+Got questions? Reach out to rgangopa@bu.edu
