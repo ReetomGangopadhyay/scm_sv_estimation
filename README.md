@@ -3,7 +3,7 @@
 This repository contains the full code and documentation for the project exploring the causal effects of the COVID-19 pandemic on the S&P 500 index using a combination of the Synthetic Control Method (SCM) and Stochastic Volatility (SV) Modeling via custom Gibbs sampling.
 
 **Date:** April 25, 2025  
-**Paper:** [`Assessing the Impact...`](./Assessing%20the%20Impact%20of%20the%20COVID-19%20Recession%20on%20the%20S%26P%20500%20Using%20Synthetic%20Control%20and%20Stochastic%20Volatility%20Modeling.pdf.pdf)
+**Paper:** Assessing the Impact of the COVID-19 Recession on the S&P 500 Using Synthetic Control and Stochastic Volatility Modeling
 
 ## Project Overview
 
